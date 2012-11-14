@@ -6,7 +6,6 @@ long stateChangedDelay=1000; //1sec
 bool signalIsMeassuring=false;
 bool isStable=false;
 bool isSignalStillLOW=false;
-bool toHigh=false;
 
 void setup() {
   Serial.begin(9600);
@@ -19,36 +18,30 @@ void setup() {
 void loop() {
   bool isAnySensorActivated=false;
 
-  if (!signalIsMeassuring) {
+  if (!signalIsMeassuring) { //signal neni meren
     if (digitalRead(12)==LOW && oldStateArmPin==HIGH) { //spousteci hrana
       Serial.println("rise edge, signal to LOW");
       signalIsMeassuring=true;
       lastTimeStateChanged=millis();
       isStable=false;
       isSignalStillLOW=true;
-      oldStateArmPin=LOW;
-      Serial.println("oldStateArmPin=LOW");
     }
-    
     if (digitalRead(12)==HIGH && oldStateArmPin==LOW) { //dobezna hrana
-      Serial.println("descending edge, signal to HIGH");
-      lastTimeStateChanged=millis();
-      isStable=false;
-      toHigh=true;
+      Serial.println("faling edge, signal to HIGH");
+      oldStateArmPin=HIGH;
+      delay(50);
     }
   }
-  else {
+  else { //mereni signalu
     if (millis()-lastTimeStateChanged>50) { //50ms po zmene stavu na LOW kvuli zakmitum
       Serial.println("Signal sampling");
       isStable=true;
+      oldStateArmPin=LOW;
+      //Serial.println("oldStateArmPin=LOW");
     }
     
     if (isStable) {
-      if (toHigh) {
-        oldStateArmPin=HIGH;
-        Serial.println("oldStateArmPin=LOW");
-      }
-      else if (digitalRead(12)==HIGH) { //signal se po dobu mereni zmenil
+      if (digitalRead(12)==HIGH) { //signal se po dobu mereni zmenil
         Serial.println("Signal changed during meassurement");
         isSignalStillLOW=false;
       }
@@ -62,7 +55,8 @@ void loop() {
           Serial.println("ARMED");
         else
           Serial.println("NOT ARMED");
-        }
+      }
+      //oldStateArmPin=digitalRead(12);
       signalIsMeassuring=false;
       Serial.print("oldStateArmPin=");
       Serial.println(oldStateArmPin);
@@ -80,4 +74,7 @@ void loop() {
   else {
     digitalWrite(13, LOW);
   }
+
+
+
 }
