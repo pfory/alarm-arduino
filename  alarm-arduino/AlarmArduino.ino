@@ -1,35 +1,69 @@
-/*bool isArmed=false;
-bool isAlarm=false;
-bool oldStateArmPin=HIGH; //internal pullup set this pin to high
-long lastTimeStateChanged;
-long stateChangedDelay=1000; //1sec
-bool signalIsMeassuring=false;
-bool isStable=false;
-bool isSignalStillLOW=false;
-*/
 byte state=0;
-bool stateEntry;
+bool stateEntry=true;
 bool oldStateArmPin=HIGH; //internal pullup set this pin to high
 long lastTimeStateChanged;
 const int timeToEliminateOscillation=50; //in ms
 const int timeSampling=1000-timeToEliminateOscillation;
+const byte pinArmDisarm=12;
+bool isArmed=false;
+bool isAlarm=isArmed;
+bool isAnySensorActivated=false;
+long timeForArmDisarm=0;
+const int timeDelayForArm=5000; //in ms
+const int timeDelayForDisArm=10000; //in ms
 
 void setup() {
   Serial.begin(9600);
   pinMode(2, INPUT_PULLUP);
   pinMode(12, INPUT_PULLUP);
-  pinMode(13, OUTPUT);
+  pinMode(pinArmDisarm, OUTPUT);
   Serial.println("ArduAlarm");
 }
 
 void loop() {
+  if (stateMachineForArmDisarm(pinArmDisarm, &isArmed)) {
+    timeForArmDisarm=millis();
+  }
+  
+  if (timeForArmDisarm>0) {
+    if (isArmed) {
+      if (millis()-timeForArmDisarm>timeDelayForArm) {
+        isAlarm=true;
+        timeForArmDisarm=0;
+      }
+    else
+      if (millis()-timeForArmDisarm>timeDelayForDisArm) {
+        isAlarm=false;
+        timeForArmDisarm=0;
+      }
+    }
+  }
+  
+  if (digitalRead(2)==HIGH) {
+    isAnySensorActivated=true;
+  }
+  
+  if (isAlarm && isAnySensorActivated) {
+    digitalWrite(13, HIGH);
+  }
+  else {
+    digitalWrite(13, LOW);
+  }
+
+  isAnySensorActivated=false;
+}
+
+
+bool stateMachineForArmDisarm(byte pin, bool* armStatus) {
+  bool changeState=false;
   //state machine
   if (state==0) {
     if (stateEntry) {
+      //Serial.println("Status 0 entry");
       stateEntry=false;
     }
 
-    if (digitalRead(12)==LOW && oldStateArmPin==HIGH) { //falling hrana
+    if (digitalRead(pin)==LOW && oldStateArmPin==HIGH) { //falling hrana
       state=1;
       stateEntry=true;
     }
@@ -37,7 +71,7 @@ void loop() {
   
   if (state==1) {
     if (stateEntry) {
-      Serial.println("Status 1 entry");
+      //Serial.println("Status 1 entry");
       stateEntry=false;
       lastTimeStateChanged = millis();
     }
@@ -50,12 +84,12 @@ void loop() {
   
   if (state==2) {
     if (stateEntry) {
-      Serial.println("Status 2 entry");
+      //Serial.println("Status 2 entry");
       stateEntry=false;
       lastTimeStateChanged = millis();
     }
     
-    if (digitalRead(12)==HIGH) {
+    if (digitalRead(pin)==HIGH) {
       state=0;
       stateEntry=true;
     }
@@ -70,81 +104,51 @@ void loop() {
   
   if (state==3) {
     if (stateEntry) {
-      Serial.println("Status 3 entry");
+      //Serial.println("Status 3 entry");
       stateEntry=false;
-      if (digitalRead(12)==LOW) {
-        Serial.println("Status changing");
-      }
     }
-    
-    if (digitalRead(12)==HIGH) {
-      state=0;
+
+    if (digitalRead(pin)==LOW) {
+      Serial.println("Status changing");
+      *armStatus=!*armStatus;
+      changeState=true;
+      Serial.println(*armStatus);
+      if (*armStatus)
+        Serial.println("ARMED");
+      else
+        Serial.println("DISARMED");
+      state=4;
       stateEntry=true;
     }
   }
-    
-  oldStateArmPin=digitalRead(12);
-  
-/*
-  bool isAnySensorActivated=false;
 
-  if (!signalIsMeassuring) { //signal neni meren
-    if (digitalRead(12)==LOW && oldStateArmPin==HIGH) { //spousteci hrana
-      Serial.println("rise edge, signal to LOW");
-      signalIsMeassuring=true;
-      lastTimeStateChanged=millis();
-      isStable=false;
-      isSignalStillLOW=true;
+  if (state==4) {
+    if (stateEntry) {
+      //Serial.println("Status 4 entry");
+      stateEntry=false;
     }
-    if (digitalRead(12)==HIGH && oldStateArmPin==LOW) { //dobezna hrana
-      Serial.println("faling edge, signal to HIGH");
-      oldStateArmPin=HIGH;
-      delay(50);
+
+    if (digitalRead(pin)==HIGH) {
+      state=5;
+      stateEntry=true;
     }
   }
-  else { //mereni signalu
-    if (millis()-lastTimeStateChanged>50) { //50ms po zmene stavu na LOW kvuli zakmitum
-      Serial.println("Signal sampling");
-      isStable=true;
-      oldStateArmPin=LOW;
-      //Serial.println("oldStateArmPin=LOW");
+
+  if (state==5) {
+    if (stateEntry) {
+      //Serial.println("Status 5 entry");
+      lastTimeStateChanged = millis();
+      stateEntry=false;
     }
-    
-    if (isStable) {
-      if (digitalRead(12)==HIGH) { //signal se po dobu mereni zmenil
-        Serial.println("Signal changed during meassurement");
-        isSignalStillLOW=false;
+  
+    if (millis()-lastTimeStateChanged>timeToEliminateOscillation) {
+      if (digitalRead(pin)==HIGH) {
+        state=0;
+        stateEntry=true;
       }
     }
-    
-    if (millis()-lastTimeStateChanged>stateChangedDelay ) { //timeout mereni
-      if (isSignalStillLOW) {
-        Serial.print("Status changing to ");
-        isArmed=!isArmed;
-        if (isArmed)
-          Serial.println("ARMED");
-        else
-          Serial.println("NOT ARMED");
-      }
-      //oldStateArmPin=digitalRead(12);
-      signalIsMeassuring=false;
-      Serial.print("oldStateArmPin=");
-      Serial.println(oldStateArmPin);
-        
-    }
   }
-  if (digitalRead(2)==HIGH) {
-    isAnySensorActivated=true;
-  }
-
   
-  if (isArmed && isAnySensorActivated) {
-    digitalWrite(13, HIGH);
-  }
-  else {
-    digitalWrite(13, LOW);
-  }
-
-
-*/
+  oldStateArmPin=digitalRead(pin);   
+  return changeState;
 }
